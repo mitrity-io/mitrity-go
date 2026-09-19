@@ -20,12 +20,18 @@
 # The reviews only mean something when everything that shaped them is the
 # base branch's: a pull_request workflow runs the PR head's definition, and
 # the review agents read the head's instruction files. So the head's
-# .github/, .claude/, CLAUDE.md (root or nested), .mcp.json and root
-# action.yml must be byte-identical to the base branch's, and the PR must not
-# change them at all; otherwise the gate refuses and the PR is merged by hand.
-# Every workflow in this repository declares a read-only token, so no
-# head-executed job can post a review, and the review agents execute nothing
-# from the head (Read/Grep/Glob).
+# .github/, .claude/ (root or nested), CLAUDE.md and AGENTS.md (root or
+# nested), .mcp.json and root action.yml must not be changed by the PR at
+# all; otherwise the gate refuses and the PR is merged by hand. What keeps a PR from forging its own
+# approvals is the split of duties among workflows: the review workflows hold
+# pull-requests: write to post their reviews but execute nothing from the
+# head (Read/Grep/Glob only); every job that executes head code runs with a
+# read-only token; a job that posts a comment from head-produced output
+# checks out nothing.
+#
+# Dependabot PRs are merged by this gate too, never on a model verdict alone:
+# the Dependency Review Agent must approve the head AND the PR title must
+# describe a single-package PATCH bump; anything else is merged by hand.
 #
 # Threat model, stated: the gate defends against the CONTENT of one pull
 # request (code an agent was steered into committing). It does not defend
@@ -33,6 +39,9 @@
 # a workflow with pull-requests: write could post forged approvals on any PR,
 # and that actor could equally push to main. Per-agent App identities and
 # protected environments would close that; both are outside this gate.
+#
+# Stacked PRs (base other than the default branch) are never merged by the
+# gate; they are retargeted by hand once their base has landed.
 #
 # Merging is verified, not assumed: the PR's merge state must be CLEAN (every
 # required check green, no conflict) at the verified head, because the merge
@@ -59,26 +68,25 @@ clean() { printf '%s' "$*" | tr -d '\000-\037' | cut -c1-200; }     # PR-influen
 
 merge_now() {
   # The merge state is GitHub's own verdict on required checks, conflicts and
-  # review requirements; it can be UNKNOWN for a moment after a push.
+  # review requirements; it can be UNKNOWN for a moment after a push. It is
+  # re-read immediately before every merge attempt, because the merge token
+  # is an administrator's and branch protection would not re-check for it.
   for ATTEMPT in 1 2 3; do
     MS=$(gh pr view "$PR" --repo "$REPO" --json mergeStateStatus,headRefOid --jq '"\(.mergeStateStatus) \(.headRefOid)"' 2>/dev/null) || MS="PROBE_FAILED -"
     STATE=${MS%% *}; NOW_SHA=${MS##* }
-    [ "$STATE" = "UNKNOWN" ] && [ "$ATTEMPT" -lt 3 ] && { sleep 15; continue; }
-    break
-  done
-  [ "$NOW_SHA" = "$HEAD_SHA" ] || { say "Not merged: the head moved from $HEAD_SHA to $(clean "$NOW_SHA") while evaluating"; return 0; }
-  if [ "$STATE" != "CLEAN" ]; then
-    ROLLUP=$(gh pr view "$PR" --repo "$REPO" --json statusCheckRollup --jq '[.statusCheckRollup[] | select((.conclusion // "") != "SUCCESS" and (.conclusion // "") != "SKIPPED" and (.conclusion // "") != "NEUTRAL") | "\(.name // .context)=\(.conclusion // .status // "pending")"] | join(", ")' 2>/dev/null || true)
-    say "::notice::Not merged: merge state is $(clean "$STATE") at $HEAD_SHA (${ROLLUP:-no failing or pending checks listed}); the next completion re-evaluates"
-    return 0
-  fi
-  if [ "$DRY_RUN" = "1" ]; then say "DRY_RUN: would merge #$PR at $HEAD_SHA (merge state CLEAN)"; return 0; fi
-  for ATTEMPT in 1 2 3; do
+    [ "$NOW_SHA" = "$HEAD_SHA" ] || { say "Not merged: the head moved from $HEAD_SHA to $(clean "$NOW_SHA") while evaluating"; return 0; }
+    if [ "$STATE" = "UNKNOWN" ]; then [ "$ATTEMPT" -lt 3 ] && sleep 15; continue; fi
+    if [ "$STATE" != "CLEAN" ]; then
+      ROLLUP=$(gh pr view "$PR" --repo "$REPO" --json statusCheckRollup --jq '[.statusCheckRollup[] | select((.conclusion // "") != "SUCCESS" and (.conclusion // "") != "SKIPPED" and (.conclusion // "") != "NEUTRAL") | "\(.name // .context)=\(.conclusion // .status // "pending")"] | join(", ")' 2>/dev/null || true)
+      say "::notice::Not merged: merge state is $(clean "$STATE") at $HEAD_SHA ($(clean "${ROLLUP:-no failing or pending checks listed}")); the next completion re-evaluates"
+      return 0
+    fi
+    if [ "$DRY_RUN" = "1" ]; then say "DRY_RUN: would merge #$PR at $HEAD_SHA (merge state CLEAN)"; return 0; fi
     OUT=$(gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$HEAD_SHA" 2>&1) && { say "Merged #$PR at $HEAD_SHA"; return 0; }
     say "::notice::merge attempt $ATTEMPT/3 refused: $(clean "$OUT")"
     [ "$ATTEMPT" -lt 3 ] && sleep 15
   done
-  say "::warning::PR #$PR was not merged although its merge state was CLEAN; the next completion re-evaluates"
+  say "::warning::PR #$PR was not merged; the next completion re-evaluates"
 }
 disarm() {
   # nothing is armed by this gate; disarming covers an arming made by hand or by an older gate
@@ -91,43 +99,68 @@ PRJSON=$(gh pr view "$PR" --repo "$REPO" --json headRefOid,baseRefName,state,cha
 [ "$(printf '%s' "$PRJSON" | jq -r .state)" = "OPEN" ] || { say "PR #$PR is not open; nothing to do"; exit 0; }
 HEAD_SHA=$(printf '%s' "$PRJSON" | jq -r .headRefOid)
 BASE_REF=$(printf '%s' "$PRJSON" | jq -r .baseRefName)
+# A PR merges into its base. The gate only ever merges into the default
+# branch: a stacked PR (base = another feature branch) would otherwise be
+# squashed into its parent branch the moment both agents approve it.
+DEFAULT_BRANCH=$(gh api "repos/$REPO" --jq .default_branch 2>/dev/null) || { disarm "could not read the default branch"; exit 0; }
+if [ "$BASE_REF" != "$DEFAULT_BRANCH" ]; then
+  disarm "PR #$PR is stacked on '$(clean "$BASE_REF")', not on $DEFAULT_BRANCH; retarget it after its base merges"; exit 0
+fi
 N_FILES=$(printf '%s' "$PRJSON" | jq -r '.changedFiles // 0')
 AUTHOR=$(printf '%s' "$PRJSON" | jq -r '.author.login // ""')
-case "$AUTHOR" in
-  dependabot\[bot\]|app/dependabot) say "PR #$PR is a Dependabot PR; its own gate in dependency-review.yml decides, nothing to do here"; exit 0;;
-esac
+DEPENDABOT=0
+case "$AUTHOR" in dependabot\[bot\]|app/dependabot) DEPENDABOT=1;; esac
 case "$N_FILES" in ''|*[!0-9]*) disarm "could not determine the PR's file count ('$(clean "$N_FILES")')"; exit 0;; esac
 
 # ── the PR's files: a PR-controlled workflow definition is never armed ─────
 if [ "$N_FILES" -gt 3000 ]; then disarm "PR changes $N_FILES files, more than the files API lists; manual merge required"; exit 0; fi
 CHANGED=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' 2>/dev/null) || { disarm "could not list the PR files"; exit 0; }
-WF_CHANGE=$(printf '%s\n' "$CHANGED" | grep -m1 -E '^\.github/|(^|/)CLAUDE\.md$|^\.claude/|^\.mcp\.json$|^action\.ya?ml$' || true)
+SURFACE_RE='^\.github/|(^|/)CLAUDE\.md$|(^|/)AGENTS\.md$|(^|/)\.claude/|^\.mcp\.json$|^action\.ya?ml$'
+WF_CHANGE=$(printf '%s\n' "$CHANGED" | grep -m1 -E "$SURFACE_RE" || true)
 if [ -n "$WF_CHANGE" ]; then
   disarm "PR changes the workflow or reviewer-instruction surface ($(clean "$WF_CHANGE")); reviews produced under a PR-controlled definition are not trusted, manual merge required"; exit 0
 fi
-# The head's copy of that surface must also equal the base branch's current
-# copy: a PR branched before a change to it would otherwise run the older
-# definition without changing anything itself.
-BASE_SHA=$(gh api "repos/$REPO/branches/$BASE_REF" --jq .commit.sha 2>/dev/null) || { disarm "could not read the base branch"; exit 0; }
-HEAD_TREE=$(gh api "repos/$REPO/git/trees/$HEAD_SHA" --jq '.tree[] | select(.path == ".github" or .path == ".claude" or .path == "CLAUDE.md" or .path == ".mcp.json" or .path == "action.yml" or .path == "action.yaml") | "\(.path) \(.sha)"' 2>/dev/null | sort) || { disarm "could not read the head tree"; exit 0; }
-BASE_TREE=$(gh api "repos/$REPO/git/trees/$BASE_SHA" --jq '.tree[] | select(.path == ".github" or .path == ".claude" or .path == "CLAUDE.md" or .path == ".mcp.json" or .path == "action.yml" or .path == "action.yaml") | "\(.path) \(.sha)"' 2>/dev/null | sort) || { disarm "could not read the base tree"; exit 0; }
-if [ "$HEAD_TREE" != "$BASE_TREE" ]; then
-  disarm "the head's workflow or reviewer-instruction surface differs from the base branch's current one (rebase or merge $BASE_REF first); manual merge otherwise"; exit 0
-fi
+# A PR that leaves the surface untouched ran its reviews under the surface of
+# the base commit it branched from — an older revision of main's, trusted at
+# the time. Refusing every PR that predates a change to .github/ would force a
+# rebase and a full re-review of every open PR after each such change; where
+# that strictness is wanted, branch protection's "require branches to be up
+# to date" provides it mechanically (iag-infra and iag-agents use it).
 
 # ── the reviews at head ─────────────────────────────────────────────────────
 REVIEWS=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
   --jq '.[] | select(.user.login == "github-actions[bot]")
         | [ ((.body // "") | if startswith("## Security Review Agent") then "security"
                      elif startswith("## Code Review Agent") then "code"
+                     elif startswith("## Dependency Review Agent") then "dependency"
                      else "other" end), .state, .commit_id ] | @tsv') || { disarm "could not read the PR reviews"; exit 0; }
 latest() { printf '%s\n' "$REVIEWS" | awk -F'\t' -v k="$1" '$1 == k { line = $0 } END { print line }'; }
-for KIND in code security; do
+for KIND in code security dependency; do
   L=$(latest "$KIND")
   if [ -n "$L" ] && [ "$(printf '%s' "$L" | cut -f2)" = "CHANGES_REQUESTED" ] && [ "$(printf '%s' "$L" | cut -f3)" = "$HEAD_SHA" ]; then
     disarm "$KIND review requested changes on the current head"; exit 0
   fi
 done
+
+# ── Dependabot: the deterministic semver gate lives here now ───────────────
+if [ "$DEPENDABOT" = "1" ]; then
+  TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title 2>/dev/null) || { disarm "could not read the PR title"; exit 0; }
+  TIER=unknown
+  if printf '%s' "$TITLE" | grep -qE '[Bb]ump [^ ]+( [^ ]+)* from [0-9][0-9A-Za-z.+-]* to [0-9][0-9A-Za-z.+-]*$'; then
+    OLD=$(printf '%s' "$TITLE" | sed -E 's/.* from ([0-9][0-9A-Za-z.+-]*) to [0-9][0-9A-Za-z.+-]*$/\1/')
+    NEW=$(printf '%s' "$TITLE" | sed -E 's/.* to ([0-9][0-9A-Za-z.+-]*)$/\1/')
+    if [ "$(printf '%s' "$OLD" | cut -d. -f1)" != "$(printf '%s' "$NEW" | cut -d. -f1)" ]; then TIER=major
+    elif [ "$(printf '%s' "$OLD" | cut -d. -f2)" != "$(printf '%s' "$NEW" | cut -d. -f2)" ]; then TIER=minor
+    else TIER=patch; fi
+  fi
+  if [ "$TIER" != "patch" ]; then disarm "Dependabot PR is a $(clean "$TIER") bump ($(clean "$TITLE")); only single-package patch bumps merge unattended"; exit 0; fi
+  L=$(latest dependency); STATE=$(clean "$(printf '%s' "$L" | cut -f2)"); SHA=$(clean "$(printf '%s' "$L" | cut -f3)")
+  if [ "$STATE" != "APPROVED" ] || [ "$SHA" != "$HEAD_SHA" ]; then
+    disarm "latest dependency review is '${STATE:-none}' on '${SHA:-none}', head is $HEAD_SHA"; exit 0
+  fi
+  say "Dependabot patch bump approved by the Dependency Review Agent at $HEAD_SHA; merging PR #$PR at that head"
+  merge_now; exit 0
+fi
 
 # ── is the security agent required? ────────────────────────────────────────
 SECURITY_REQUIRED=0

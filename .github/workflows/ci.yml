@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Keep the job names ("Lint", "Vet", "Test (<go>)") stable — they are the
+  # required status checks in branch protection.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.1
+
+  vet:
+    name: Vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: go vet
+        run: go vet ./...
+
+      # The module is standard-library only; a dependency would show up here
+      # as a go.mod/go.sum change that was not committed.
+      - name: go mod tidy is a no-op
+        run: go mod tidy -diff
+
+      - name: no module requirements
+        run: |
+          if grep -qE '^(require|replace)' go.mod; then
+            echo "::error::go.mod declares a requirement; the adapter is standard-library only (adapters.md, Go)"
+            exit 1
+          fi
+
+  test:
+    name: Test (${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.24", "1.25", "1.26", "1.27"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+
+      - name: Run tests
+        run: go test ./... -race -count=1 -timeout=120s

@@ -44,7 +44,7 @@ uses, with the same defaults:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `MITRITY_ADMISSION_ADDR` | `unix:/run/mitrity/admission.sock` (`127.0.0.1:8777` on Windows) | The edge's admission listener. Must be a Unix socket or loopback; anything else is refused before any I/O. |
-| `MITRITY_ADMISSION_TOKEN_FILE` | `/run/mitrity/admission.token` | The per-process token the edge writes at startup. Read on every attempt. |
+| `MITRITY_ADMISSION_TOKEN_FILE` | `/run/mitrity/admission.token` (`%PROGRAMDATA%\Mitrity\admission.token` on Windows) | The per-process token the edge writes at startup. Read on every attempt. |
 | `MITRITY_HOOK_TIMEOUT` | `500ms` (max `30s`) | Deadline for one decision. |
 | `MITRITY_HOOK_HOLD_TIMEOUT` | `540s` (max `570s`) | Longest to wait on a human approval; `0` disables waiting. |
 | `MITRITY_HOOK_FAIL_MODE` | — | Ignored. Adapters have no fail-open mode. |
@@ -71,7 +71,8 @@ func main() {
 	g := govern.New() // discovers the edge from the environment
 
 	shell := govern.WrapFunc(g, "Bash", func(ctx context.Context, in map[string]any) (string, error) {
-		out, err := exec.CommandContext(ctx, "sh", "-c", in["command"].(string)).CombinedOutput()
+		cmd, _ := in["command"].(string)
+		out, err := exec.CommandContext(ctx, "sh", "-c", cmd).CombinedOutput()
 		return string(out), err
 	})
 
@@ -114,18 +115,39 @@ run only what it returns.
 ### MCP-shaped clients
 
 An MCP client is `Call(ctx, tool, args)` — the `ToolClient` shape of
-`iag-agents/shared/agentkit`. `govern.WrapCaller` admits each call with the
+`iag-agents/shared/agentkit`, which its `gateway.Client` implements for the
+co-located `mitrity-gateway`. `govern.WrapCaller` admits each call with the
 tool name and arguments verbatim:
 
 ```go
-caller := govern.WrapCaller[agentkit.ToolResult](g, directClient)
-res, err := caller.Call(ctx, "slack_post", map[string]any{"channel": "#ops", "text": "…"})
+// direct reaches an MCP server without the gateway in between.
+admitted := govern.WrapCaller[agentkit.ToolResult](g, direct)
+res, err := admitted.Call(ctx, "slack_post", map[string]any{"channel": "#ops", "text": "…"})
+```
+
+To keep the whole `ToolClient` shape (so `List` passes through), embed the
+client and route `Call` through the wrapper:
+
+```go
+type governedTools struct {
+	agentkit.ToolClient
+	admitted govern.Caller[agentkit.ToolResult]
+}
+
+func (t governedTools) Call(ctx context.Context, tool string, args map[string]any) (agentkit.ToolResult, error) {
+	return t.admitted.Call(ctx, tool, args)
+}
+
+deps.Tools = governedTools{ToolClient: direct, admitted: govern.WrapCaller[agentkit.ToolResult](g, direct)}
 ```
 
 Do **not** wrap a client that talks to the MITRITY gateway: the gateway's
 own pipeline already judges those calls as `mcp:<tool>`, and admitting them
 again would audit one action twice. `WrapCaller` is for a client that reaches
-an MCP server directly — otherwise an ungoverned tool path. Either way,
+an MCP server directly — otherwise an ungoverned tool path. A call admitted
+this way is judged by the admission API like any other adapter call, as
+`builtin:<lowercased tool>` with audit `surface=agent_hook`, so a policy for
+it is written as `builtin:slack_post`, not `mcp:slack_post`. Either way,
 declare the server with `govern.WithOtherMCPServers("name")` so the
 attestation is honest.
 

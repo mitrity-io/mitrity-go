@@ -155,7 +155,7 @@ func (g *Governor) Attestation() admission.Attestation {
 		"adapter":             admission.AdapterName,
 		"adapter_version":     mitrity.Version,
 		"framework":           g.framework,
-		"framework_version":   g.frameworkVersion,
+		"framework_version":   nullableString(g.frameworkVersion),
 		"hooked_tools":        hooked,
 		"unhooked_exec_tools": ungoverned,
 		"disallowed_tools":    []string{},
@@ -364,6 +364,15 @@ func randomHex(n int) string {
 	// terminates the program instead of returning weak bytes.
 	_, _ = rand.Read(raw)
 	return hex.EncodeToString(raw)
+}
+
+// nullableString is the hashed value of an optional string: null when unset
+// (adapters.md, "Config hash": absent values are null).
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func dedupe(existing, names []string) []string {

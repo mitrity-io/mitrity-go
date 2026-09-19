@@ -23,7 +23,7 @@ const ProtocolVersion = "1"
 
 // Header names of the admission API.
 const (
-	HeaderToken   = "X-Mitrity-Admission-Token"
+	HeaderToken   = "X-Mitrity-Admission-Token" //nolint:gosec // a header name, not a credential
 	HeaderVersion = "X-Mitrity-Admission-Version"
 )
 

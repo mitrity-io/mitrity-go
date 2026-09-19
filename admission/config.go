@@ -17,7 +17,7 @@ import (
 // mitrity-hook does, so one provisioning step serves both.
 const (
 	EnvAddr        = "MITRITY_ADMISSION_ADDR"
-	EnvTokenFile   = "MITRITY_ADMISSION_TOKEN_FILE"
+	EnvTokenFile   = "MITRITY_ADMISSION_TOKEN_FILE" //nolint:gosec // the name of the variable that holds the path, not a credential
 	EnvTimeout     = "MITRITY_HOOK_TIMEOUT"
 	EnvHoldTimeout = "MITRITY_HOOK_HOLD_TIMEOUT"
 	// EnvFailMode is read for documentation's sake and deliberately ignored:

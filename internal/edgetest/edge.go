@@ -9,6 +9,7 @@
 package edgetest
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -25,7 +26,7 @@ import (
 
 // Header names, spelled here independently of the package under test.
 const (
-	HeaderToken   = "X-Mitrity-Admission-Token"
+	HeaderToken   = "X-Mitrity-Admission-Token" //nolint:gosec // a header name, not a credential
 	HeaderVersion = "X-Mitrity-Admission-Version"
 )
 
@@ -195,7 +196,7 @@ func New(t testing.TB) *Edge {
 		defaultHealth: Scripted{Status: 200, Body: map[string]any{"status": "ok", "profile_age_seconds": 3}},
 	}
 	e.token = e.writeToken()
-	listener, err := net.Listen("unix", e.SocketPath)
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", e.SocketPath)
 	if err != nil {
 		t.Fatalf("edgetest: listen: %v", err)
 	}

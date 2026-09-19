@@ -149,7 +149,7 @@ this way is judged by the admission API like any other adapter call, as
 `builtin:<lowercased tool>` with audit `surface=agent_hook`, so a policy for
 it is written as `builtin:slack_post`, not `mcp:slack_post`. Either way,
 declare the server with `govern.WithOtherMCPServers("name")` so the
-attestation is honest.
+attestation is complete.
 
 ### What the attestation says
 

@@ -48,7 +48,7 @@ jobs:
       - name: no module requirements
         run: |
           if grep -qE '^(require|replace)' go.mod; then
-            echo "::error::go.mod declares a requirement; the adapter is standard-library only (adapters.md, Go)"
+            echo "::error::go.mod declares a requirement; the adapter is standard-library only (the adapter contract, section Go)"
             exit 1
           fi
 

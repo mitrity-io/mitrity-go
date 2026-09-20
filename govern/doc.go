@@ -9,7 +9,7 @@
 // the edge's reason on a deny, waits for the human on a hold, and runs the
 // inner tool with the edge's updated_input merged over the input on an allow.
 // WrapCaller does the same for an MCP-client-shaped Call(ctx, tool, args)
-// method, the pattern iag-agents' agentkit uses.
+// method.
 //
 // Coverage is exactly what you hand it. A tool that was not wrapped is
 // invisible to the adapter and to the attestation the Governor sends at the

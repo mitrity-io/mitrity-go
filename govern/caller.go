@@ -2,8 +2,8 @@ package govern
 
 import "context"
 
-// Caller is the shape of an MCP tool client: Call(ctx, tool, args), as
-// agentkit.ToolClient in iag-agents spells it. R is the client's result type.
+// Caller is the shape of an MCP tool client: Call(ctx, tool, args). R is the
+// client's result type.
 type Caller[R any] interface {
 	Call(ctx context.Context, tool string, args map[string]any) (R, error)
 }

@@ -95,7 +95,7 @@ func TestConfigHashIsSHA256Hex(t *testing.T) {
 }
 
 func TestConfigHashMatchesThePythonAdapterForTheSpecExample(t *testing.T) {
-	// The adapters.md example, hashed identically by every adapter: the
+	// The adapter contract's example, hashed identically by every adapter: the
 	// canonical bytes are checked here, so a divergence is a failing test
 	// rather than a drift alarm in production.
 	example := map[string]any{

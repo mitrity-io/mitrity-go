@@ -19,12 +19,11 @@ Contract: [iag-specs/sentinel/adapters.md](https://github.com/mitrity-io/iag-spe
 ## Install
 
 ```bash
-go get github.com/mitrity-io/mitrity-go@<ref>
+go get github.com/mitrity-io/mitrity-go@v0.1.0
 ```
 
-Go ≥ 1.24. No dependency beyond the standard library. Until the first tagged
-release, pin a commit; while the repository is private, set
-`GOPRIVATE=github.com/mitrity-io` so the Go tool fetches it over git.
+Go ≥ 1.24. No dependency beyond the standard library. Releases are tagged
+`vX.Y.Z`; `mitrity.Version` reports the module version at run time.
 
 ## Prerequisite: a co-located edge
 

@@ -84,7 +84,7 @@ jobs:
             - No unnecessary dependencies added
             - Error handling is appropriate (every failure to obtain a decision is a deny, never an allow; errors returned, not panicked)
             - Variable/function naming is clear and consistent
-            - Public API matches iag-specs sentinel/adapters.md (names, semantics, attestation fields); the module stays standard-library only (no go.mod requirements)
+            - Public API matches the adapter contract (https://mitrity.com/docs/integrations/adapters: names, semantics, attestation fields); the module stays standard-library only (no go.mod requirements)
             - Builds on Go 1.24 (no newer standard-library APIs) and passes golangci-lint with the repository's .golangci.yml
 
             When you are done, return your result as the JSON object required by the schema: review_body (markdown) and verdict.

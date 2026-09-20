@@ -114,31 +114,37 @@ run only what it returns.
 
 ### MCP-shaped clients
 
-An MCP client is `Call(ctx, tool, args)` — the `ToolClient` shape of
-`iag-agents/shared/agentkit`, which its `gateway.Client` implements for the
-co-located `mitrity-gateway`. `govern.WrapCaller` admits each call with the
-tool name and arguments verbatim:
+An MCP client is `Call(ctx, tool, args)`: whatever type your agent uses to
+reach an MCP server, as long as it has that method. `govern.WrapCaller`
+admits each call with the tool name and arguments verbatim:
 
 ```go
-// direct reaches an MCP server without the gateway in between.
-admitted := govern.WrapCaller[agentkit.ToolResult](g, direct)
+// direct is your MCP client, reaching a server without the gateway in
+// between; Result is whatever its Call returns.
+admitted := govern.WrapCaller[Result](g, direct)
 res, err := admitted.Call(ctx, "slack_post", map[string]any{"channel": "#ops", "text": "…"})
 ```
 
-To keep the whole `ToolClient` shape (so `List` passes through), embed the
-client and route `Call` through the wrapper:
+To keep the client's whole interface (so a `List` method passes through),
+embed the client and route `Call` through the wrapper:
 
 ```go
-type governedTools struct {
-	agentkit.ToolClient
-	admitted govern.Caller[agentkit.ToolResult]
+// ToolClient is the interface your agent already uses for its MCP client.
+type ToolClient interface {
+	List(ctx context.Context) ([]string, error)
+	Call(ctx context.Context, tool string, args map[string]any) (Result, error)
 }
 
-func (t governedTools) Call(ctx context.Context, tool string, args map[string]any) (agentkit.ToolResult, error) {
+type governedTools struct {
+	ToolClient
+	admitted govern.Caller[Result]
+}
+
+func (t governedTools) Call(ctx context.Context, tool string, args map[string]any) (Result, error) {
 	return t.admitted.Call(ctx, tool, args)
 }
 
-deps.Tools = governedTools{ToolClient: direct, admitted: govern.WrapCaller[agentkit.ToolResult](g, direct)}
+var tools ToolClient = governedTools{ToolClient: direct, admitted: govern.WrapCaller[Result](g, direct)}
 ```
 
 Do **not** wrap a client that talks to the MITRITY gateway: the gateway's

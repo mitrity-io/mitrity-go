@@ -20,5 +20,5 @@
 // If the edge cannot be reached, the call is denied. There is no fail-open
 // mode, no cached decision and no local policy evaluation.
 //
-// Contract: https://github.com/mitrity-io/iag-specs/blob/main/sentinel/adapters.md
+// Contract: https://mitrity.com/docs/integrations/adapters
 package govern

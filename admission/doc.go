@@ -11,6 +11,6 @@
 // one provisioning step serves both. The address must be a Unix socket or a
 // loopback host:port; anything else is refused before any I/O.
 //
-// Contract: https://github.com/mitrity-io/iag-specs/blob/main/sentinel/admission-api.md
-// Adapter guarantees: https://github.com/mitrity-io/iag-specs/blob/main/sentinel/adapters.md
+// Contract: https://mitrity.com/docs/integrations/admission-api
+// Adapter guarantees: https://mitrity.com/docs/integrations/adapters
 package admission

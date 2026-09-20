@@ -21,7 +21,7 @@ const (
 	EnvTimeout     = "MITRITY_HOOK_TIMEOUT"
 	EnvHoldTimeout = "MITRITY_HOOK_HOLD_TIMEOUT"
 	// EnvFailMode is read for documentation's sake and deliberately ignored:
-	// adapters have no fail-open mode (adapters.md, G2).
+	// adapters have no fail-open mode (the adapter contract, guarantee G2).
 	EnvFailMode = "MITRITY_HOOK_FAIL_MODE"
 )
 

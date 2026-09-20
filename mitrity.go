@@ -12,11 +12,11 @@
 //     typed error carrying the policy reason, a hold waits for the human, an
 //     allow runs the (possibly rewritten) input.
 //
-// Contract: https://github.com/mitrity-io/iag-specs/blob/main/sentinel/adapters.md
-// Wire protocol: https://github.com/mitrity-io/iag-specs/blob/main/sentinel/admission-api.md
+// Contract: https://mitrity.com/docs/integrations/adapters
+// Wire protocol: https://mitrity.com/docs/integrations/admission-api
 package mitrity
 
 // Version is the adapter version reported as adapter_version on every
 // attestation. Semver; adopting a new admission protocol version is at least
-// a MINOR bump (adapters.md, "Versioning rule").
+// a MINOR bump (the adapter contract, "Versioning rule").
 const Version = "0.1.0"

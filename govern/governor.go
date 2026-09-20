@@ -367,7 +367,7 @@ func randomHex(n int) string {
 }
 
 // nullableString is the hashed value of an optional string: null when unset
-// (adapters.md, "Config hash": absent values are null).
+// (the adapter contract, "Config hash": absent values are null).
 func nullableString(s string) any {
 	if s == "" {
 		return nil

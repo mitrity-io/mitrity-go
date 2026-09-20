@@ -18,7 +18,7 @@ const (
 	SurfaceCrewAI         Surface = "crewai"
 	// SurfaceCustom is the surface of a Go agent: no framework surface is
 	// defined for Go, so the request says "custom" and the attestation names
-	// the framework the developer declares (adapters.md, "Go").
+	// the framework the developer declares (the adapter contract, "Go").
 	SurfaceCustom Surface = "custom"
 )
 
